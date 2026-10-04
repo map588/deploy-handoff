@@ -50,6 +50,14 @@ python3 skills/deploy-handoff/handoff.py terminal \
 
 Claude starts the program in a terminal that you see and stops at the question. You give the answer.
 
+Keep the submit of a change for yourself. A submit is a command that sends work out of your computer, for example `git push` or a production deploy. Claude makes the commit and starts the submit in a terminal that you see. The command runs when you press Enter:
+
+```bash
+python3 skills/deploy-handoff/handoff.py submit --title "Push 2 commits to origin main" -- git push origin main
+```
+
+The script refuses to run without a terminal, so a program cannot give the answer for you. Claude runs a submit itself only after you give the word: DEPLOY, or a direct instruction such as "push it".
+
 Open the pull request form for the current branch:
 
 ```bash

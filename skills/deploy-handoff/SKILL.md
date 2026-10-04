@@ -8,8 +8,10 @@ description: >-
   an API key. Examples: Stripe live mode, Google Play Console releases, F-Droid
   merge requests, hosting consoles. Also use it for a question that a program
   asks in a terminal, for example an install question or the sign-in of a
-  command line program. Also use it to open every GitHub pull request, instead
-  of gh pr create or another pull request tool.
+  command line program. Also use it for the submit of a change: git push, a
+  release, or a production deploy that the user did not ask you to run. Also use
+  it to open every GitHub pull request, instead of gh pr create or another pull
+  request tool.
 ---
 
 # deploy-handoff
@@ -28,7 +30,7 @@ Before you do the work, select one of these modes:
 
 | Mode | Use it when |
 |---|---|
-| PowerShell command | A CLI or API does the step, for example `vercel deploy`, `gh release create`, or `stripe`. Run it with the PowerShell tool. |
+| PowerShell command | A CLI or API does the step, for example `vercel deploy`, `gh release create`, or `stripe`. Run it with the PowerShell tool. If the command is a submit and the user did not give the word, see "Hand off the submit of a command". |
 | Brave with the Claude extension | The `mcp__claude-in-chrome__*` tools are available, and the extension runs in the Brave profile of the user. This is the default browser mode. |
 | Terminal prompt | The step is a question that a program asks in a terminal: an install question, a sign-in of a command line program, or a confirmation. See "Hand off a step in a terminal". |
 | Windows-MCP | The step is in a desktop app or an operating system dialog, not in a web page. |
@@ -66,6 +68,7 @@ Never do these steps yourself. Give them to the user:
 - Create or show a secret, for example an API key or a webhook secret.
 - Change a security setting, a payment method, or the access of a person.
 - Click the final button that publishes, deploys, pays, buys, submits, merges, or deletes.
+- Run a submit that the user did not ask you to run: `git push`, a release, a production deploy.
 
 ### The browser-driver agent
 
@@ -165,6 +168,41 @@ More than one question can wait at the same time. Start each program in its own 
 If the program asks for a password, a code, or a key, the user types it in the terminal. Never ask for the value in the chat.
 
 Do not give the user a list of commands to copy and run. A command that needs no answer from a person is your work: run it. Give the user only the question.
+
+## Hand off the submit of a command
+
+A submit is a command that sends work out of this computer, or that changes a live system. Examples: `git push`, the push of a tag, `gh release create`, a package publish, a production deploy, the restart of a live service.
+
+The submit is the step of the user. Run it yourself only when the user gave the word for this change in this session: the word DEPLOY, or a direct instruction such as "push it". An approval for one change does not apply to the next change.
+
+Without the word, bring the user right up to the submit:
+
+1. Do all the work that comes before the submit. Verify the change. Stage the files, write the commit message, and make the commit. Make the tag and the build if the submit needs them.
+2. Start the submit in a terminal that the user can see and type in. Use the tool that types a command into a tab of the Terminal panel. Give the tab a title that names the step:
+
+   ```bash
+   python3 SKILL_DIR/handoff.py submit --title "Push 2 commits to origin main" -- git push origin main
+   ```
+
+   The script shows the title and the command. Then it waits. The command runs when the user presses Enter. The user stops it with "n".
+3. Read the terminal. Make sure that the script shows the command and waits.
+4. Show the dialog. Run the command in the background:
+
+   ```bash
+   python3 SKILL_DIR/handoff.py terminal \
+     --title "Push 2 commits to origin main" \
+     --where 'Terminal tab "push"' \
+     --step 'Read the command.' \
+     --step 'Press Enter.'
+   ```
+
+5. Wait for the result of the submit, not only for the dialog. For example, run `git status -sb` until the branch is not ahead. Then continue.
+
+Do not run `handoff.py submit` with your shell tool, and do not give it an answer through a pipe. The script refuses to run without a terminal: the user gives the answer.
+
+Do not ask the user to stage files, to write a commit message, or to type the command. Do not stop with "not committed" or "say commit". The commit is your work. The submit is the one step of the user.
+
+The script prints one JSON object when it ends: `done` (exit code 0) after the command ran, `not_done` (3) if the user stopped it, `error` (1) if the command failed or there is no terminal.
 
 ## Open a pull request
 

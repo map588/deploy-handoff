@@ -764,6 +764,92 @@ class MenuDialogTest(unittest.TestCase):
             handoff.MenuDialog(self.request, 1, lambda: None)
 
 
+class SubmitTest(unittest.TestCase):
+    """Test submit: a command that sends work out runs only after the user presses Enter."""
+
+    def setUp(self) -> None:
+        self.run_command = mock.MagicMock(return_value=subprocess.CompletedProcess([], 0))
+        patcher = mock.patch("handoff.subprocess.run", self.run_command)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.terminal(True)
+
+    def terminal(self, is_terminal: bool) -> None:
+        stdin = mock.MagicMock()
+        stdin.isatty.return_value = is_terminal
+        patcher = mock.patch("handoff.sys.stdin", stdin)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def submit(
+        self, answer: str | BaseException, *command: str
+    ) -> tuple[dict[str, str | None], str]:
+        ask = mock.MagicMock(side_effect=[answer])
+        output = StringIO()
+        with redirect_stdout(output):
+            result = handoff.run_submit("Push 1 commit to origin", list(command), ask)
+        return result, output.getvalue()
+
+    def test_enter_runs_the_command(self) -> None:
+        # On 2026-10-04 the agent pushed a commit that the user wanted to submit. The push
+        # is the step of the user: the agent prepares it, and the user presses Enter.
+        for answer in ["", "y", "Y", " yes "]:
+            with self.subTest(answer=answer):
+                self.run_command.reset_mock()
+                result, shown = self.submit(answer, "git", "push", "origin", "main")
+                self.assertEqual(result, {"status": "done", "note": ""})
+                self.run_command.assert_called_once_with(
+                    ["git", "push", "origin", "main"], check=False
+                )
+                self.assertIn("Push 1 commit to origin", shown)
+                self.assertIn("Command: git push origin main", shown)
+
+    def test_the_shown_command_is_the_command_that_runs(self) -> None:
+        _, shown = self.submit("n", "git", "commit", "-m", "it's done; really")
+        self.assertIn("""Command: git commit -m 'it'"'"'s done; really'""", shown)
+
+    @given(st.text(max_size=20))
+    def test_any_other_answer_runs_nothing(self, answer: str) -> None:
+        assume(answer.strip().lower() not in {"", "y", "yes"})
+        self.run_command.reset_mock()
+        result, _ = self.submit(answer, "git", "push")
+        self.assertEqual(result["status"], "not_done")
+        self.run_command.assert_not_called()
+
+    def test_no_answer_runs_nothing(self) -> None:
+        # Ctrl-C, and the end of the input.
+        for stop in [KeyboardInterrupt(), EOFError()]:
+            with self.subTest(stop=stop):
+                result, _ = self.submit(stop, "git", "push")
+                self.assertEqual(result["status"], "not_done")
+        self.run_command.assert_not_called()
+
+    def test_an_answer_from_a_pipe_is_refused(self) -> None:
+        # `yes | handoff.py submit ...` or a run with no terminal would give the answer of
+        # the user. The question is then not asked, and nothing runs.
+        self.terminal(False)
+        ask = mock.MagicMock()
+        with self.assertRaises(HandoffError):
+            handoff.run_submit("Push it", ["git", "push"], ask)
+        ask.assert_not_called()
+        self.run_command.assert_not_called()
+
+    def test_bad_input_is_refused(self) -> None:
+        for title, command in [("Push it", []), ("word " * 21, ["git", "push"])]:
+            with self.subTest(title=title), self.assertRaises(HandoffError):
+                handoff.run_submit(title, command, mock.MagicMock())
+        self.run_command.assert_not_called()
+
+    def test_a_command_that_fails_is_an_error(self) -> None:
+        self.run_command.return_value = subprocess.CompletedProcess([], 1)
+        result, _ = self.submit("", "git", "push")
+        self.assertEqual(result["status"], "error")
+        self.assertIn("exit code 1", str(result["error"]))
+        self.run_command.side_effect = FileNotFoundError("no such program")
+        result, _ = self.submit("", "no-such-program")
+        self.assertEqual(result["status"], "error")
+
+
 class MainTest(unittest.TestCase):
     """Test main with a fake browser and a fake dialog."""
 
@@ -853,6 +939,16 @@ class MainTest(unittest.TestCase):
         # The link of a page opens the page again. A terminal step has no page to open.
         self.dialog.call_args.args[2]()
         self.open_page.assert_not_called()
+
+    def test_submit_gives_the_command_after_the_two_hyphens(self) -> None:
+        answer = {"status": "done", "note": ""}
+        submit = self.patch("run_submit", mock.MagicMock(return_value=answer))
+        code, result = self.run_main(
+            "submit", "--title", "Push 1 commit to origin", "--", "git", "push", "--tags"
+        )
+        self.assertEqual((code, result["status"]), (0, "done"))
+        submit.assert_called_once_with("Push 1 commit to origin", ["git", "push", "--tags"])
+        self.dialog.assert_not_called()
 
     def test_terminal_refuses_bad_text(self) -> None:
         for where, step in [("", "Press Y."), ("tab 1", "word " * 21), ("x\ty\x07", "Press Y.")]:

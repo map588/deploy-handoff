@@ -37,6 +37,29 @@ say so and move on. A step that does not apply is not a blocked step.
 Report one line per part: done, blocked, or not applicable, with the cause
 for a blocked part.
 
+## MANDATORY: Stop at the submit. The user submits.
+
+A submit is a command that sends work out of this computer, or that changes a live system.
+Examples: `git push`, the push of a tag, `gh release create`, a package publish, a
+production deploy, the restart of a live service.
+
+The submit is the step of the user. Bring the user right up to it. When a change is ready:
+
+1. Verify the change. Run the checks and show the output.
+2. Stage the files. Write the commit message. Make the commit.
+3. Prepare each thing that the submit needs, for example the tag and the build.
+4. Stop before the submit. Start the submit with `handoff.py submit` in a terminal that the
+   user sees. Then show the terminal dialog of the skill. The user presses Enter.
+
+Do not ask the user to stage files, to write a commit message, or to type a command. Do not
+stop with the words "not committed" or "say commit". The commit is your work.
+
+Do not run a submit yourself. A commit that you made is not a reason to push it.
+
+You run a submit yourself only when the user gave the word for this change in this session.
+The word is DEPLOY, or a direct instruction such as "push it" or "deploy it". An approval
+for one change does not apply to the next change.
+
 ## MANDATORY: Hand off human steps. Do not refuse the task.
 
 The `deploy-handoff` plugin is installed. Its skill shows the user a dialog with the last step of a task. The user makes the final click in the browser.
@@ -51,6 +74,7 @@ Use the skill for these steps:
 - A sign-in, a two-factor code, an OAuth consent, a CAPTCHA, or the acceptance of terms.
 - The creation of an account, an API key, a webhook secret, or another secret. Tell the user where to put the secret. Never ask for the secret in the chat or in the dialog.
 - A step that needs the explicit yes of the user, for example the switch to live payments.
+- The submit of a change when the user did not give the word: `git push`, a release, a production deploy. Use `handoff.py submit`.
 - A deploy command that a permission check denied. Do not run the command again. If the platform has a web page for the same step, hand off that page.
 - A question that a program asks in a terminal before it continues: an install question, the sign-in of a command line program, or a confirmation of a change that cannot be undone.
 
@@ -80,11 +104,13 @@ At the end, give the result of each task: done or blocked. For a blocked task, g
 
 If the user tells you to stop, stop all the tasks.
 
-## Deploys that need no browser: run the command
+## Deploys that need no browser: run the command, after the word
 
 Many deploy steps need no web page. A CLI does them. Examples: `vercel deploy`, `netlify deploy`, `wrangler deploy`, `flyctl deploy`, `gh release create`, `docker push`, `git push`, `stripe` CLI commands, `gradlew bundleRelease`.
 
-For these steps:
+Most of these commands are submits. If the user did not give the word (DEPLOY, or a direct instruction), do the work up to the submit and hand off the submit with `handoff.py submit`. See "Stop at the submit".
+
+When the user gave the word, for these steps:
 
 1. Run the command with your shell tool.
 2. Let the permission prompt ask the user. The prompt is the approval. Do not hand off the step to avoid the prompt.
@@ -92,9 +118,9 @@ For these steps:
 4. Show the output. The output is the evidence that the step is complete.
 5. If the user denies the command, do not run it again. Hand off the web page for the same step, or ask the user.
 
-Do not hand off a step that a command can do. A handoff for a command that you can run wastes the time of the user.
+Do not hand off a step that a command can do, except a submit that the user did not ask for. A handoff for another command that you can run wastes the time of the user.
 
-Do not give the user a list of commands to copy and run. This is the same error. Work on a server through SSH is also a command: copy the build, install the package, restart the service. Run each command. Bring the user to the one step that needs a person, and stop there.
+Do not give the user a list of commands to copy and run. This is the same error. Work on a server through SSH is also a command: copy the build, install the package. Run each command. Bring the user to the one step that needs a person, and stop there. The restart of a live service is a submit: run it after the word, else hand it off.
 
 On Windows, run `handoff.py` in Git Bash, not in Windows PowerShell 5.1. PowerShell 5.1 removes the double quotation marks in the arguments.
 
@@ -120,7 +146,7 @@ The user is signed in to the consoles in one browser profile. Use this profile f
 
 ## Pull requests
 
-Prefer a direct commit and push when the user asked for the change. It needs no click from the user.
+Prefer a direct commit to the branch when the user asked for the change. The push is the submit: hand it off with `handoff.py submit`, or run it when the user gave the word.
 
 Open a pull request only when one of these is true:
 

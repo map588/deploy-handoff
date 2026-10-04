@@ -27,6 +27,7 @@ import http.client
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -369,6 +370,44 @@ def run_browser(exe: Path | None) -> dict[str, str | None]:
     return {"status": status, "browser": str(version.get("Browser")), "endpoint": endpoint}
 
 
+# The answers that run the command of submit: only Enter, "y" or "yes".
+SUBMIT_YES = frozenset({"", "y", "yes"})
+
+
+def run_submit(
+    title: str, command: list[str], ask: Callable[[str], str] = input
+) -> dict[str, str | None]:
+    """Show command in the terminal of the user. Run it only after the user presses Enter.
+
+    A command that sends work out of this computer, for example `git push`, is the step of
+    the user. The agent prepares the command. The user starts it.
+    """
+    check_text(title, [])
+    if not command:
+        raise HandoffError("Give the command after --, for example: submit --title T -- git push")
+    # With a pipe or no terminal, a program gives the answer, not the user.
+    if not sys.stdin.isatty():
+        raise HandoffError(
+            "Run submit in a terminal that the user sees and types in. The user gives the "
+            "answer. Do not give the answer through a pipe."
+        )
+    print(title)
+    print(f"Command: {shlex.join(command)}")
+    try:
+        answer = ask("Press Enter to run it. Type n and press Enter to stop: ")
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+    if answer.strip().lower() not in SUBMIT_YES:
+        return {"status": "not_done", "note": "The user did not run the command."}
+    try:
+        code = subprocess.run(command, check=False).returncode
+    except OSError as exc:
+        return {"status": "error", "error": f"Cannot run the command: {exc}"}
+    if code != 0:
+        return {"status": "error", "error": f"The command ended with exit code {code}."}
+    return {"status": "done", "note": ""}
+
+
 def github_repo(remote_url: str) -> str:
     """Return "owner/name" for the URL of a github.com remote."""
     match = GITHUB_REMOTE_RE.fullmatch(remote_url.strip())
@@ -636,6 +675,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     terminal.add_argument(
         "--step", action="append", required=True, help="one step for the user (give it again)"
     )
+    submit = commands.add_parser(
+        "submit", help="show a command in the terminal and run it when the user presses Enter"
+    )
+    submit.add_argument("--title", required=True, help="the action, for example: Push 1.2")
+    submit.add_argument(
+        "submit_command", nargs=argparse.REMAINDER, metavar="-- COMMAND", help="the command"
+    )
     pr = commands.add_parser("pr", parents=[common], help="open the GitHub pull request form")
     pr.add_argument("--title", required=True, help="the title of the pull request")
     body = pr.add_mutually_exclusive_group()
@@ -674,6 +720,10 @@ def main(argv: list[str] | None = None) -> int:
                     "use the Brave profile of the user."
                 )
             return report(run_browser(args.exe))
+        if args.command == "submit":
+            # argparse keeps the "--" that comes before the command.
+            words = args.submit_command
+            return report(run_submit(args.title, words[1:] if words[:1] == ["--"] else words))
         if args.command == "terminal":
             # A step at a prompt in a terminal has no page: no host to check, nothing to open.
             check_text(args.title, args.step)
